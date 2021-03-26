@@ -167,41 +167,54 @@ import {Token, TokenType} from "./Lex";
 
 // export type Block = { body: (Token|Block)[], indent: number };
 
-export enum ConstructType {
-    List,
-    Dict,
-    Call,
-    Fn,
-    Block,
-    Expression,
-    ExpressionList
+export enum ConstructType { // Must go negative, otherwise, cannot be distinguised from TokenType
+    List = -1,
+    Dict = -2,
+    Call = -3,
+    Fn = -4,
+    Block = -5,
+    Expression = -5,
+    ExpressionList = -6,
+    Value = -7
 }
 
-export type Repeat<Expr extends (TokenType|ConstructType)[], Separator extends TokenType = TokenType.Comma> = [...Expr, Separator]; // needs to repeat arbitrarily
+export function matches(constructType: ConstructType, tokens: Token[]): boolean {
+    return false
+}
 
-export interface ConstructBody extends Record<ConstructType, (TokenType|ConstructType)[]> {
+export type RepeatMatcher<Expr extends (TokenType | ConstructType)[], Separator extends TokenType = TokenType.Comma> = (list: [...(Expr | Separator)[]]) => boolean;
+
+export function Repeat<Expr extends (TokenType | ConstructType)[], Separator extends TokenType = TokenType.Comma>(expr: Expr, separator: Separator = TokenType.Comma as Separator): RepeatMatcher<Expr, Separator> {
+    return function (expression) {
+        if (expression.length === 0)
+            return true;
+        return false; // check whether expression repeats
+    };
+}
+
+export const ConstructBody: Record<ConstructType, (TokenType | ConstructType | RepeatMatcher<any, any>)[]> = {
     [ConstructType.List]: [TokenType.LeftBracket, ConstructType.ExpressionList, TokenType.RightBracket],
-    [ConstructType.Dict]: [TokenType.LeftBrace, Repeat<[TokenType.Identifier, TokenType.Colon, ConstructType.Expression]>, TokenType.RightBrace],
+    [ConstructType.Dict]: [TokenType.LeftBrace, Repeat([TokenType.Identifier, TokenType.Colon, ConstructType.Expression]), TokenType.RightBrace],
     [ConstructType.Call]: [ConstructType.Expression, TokenType.LeftParenthesis, ConstructType.ExpressionList, TokenType.RightParenthesis],
-    [ConstructType.Fn]: [TokenType.Identifier, Repeat<[TokenType.Identifier]>],
-    [ConstructType.Block]: [Repeat<[TokenType.Space, ConstructType.Expression], TokenType.Newline>],
-    [ConstructType.Expression]: [Repeat<[TokenType.Identifier | TokenType.Integer | TokenType.Boolean | TokenType.Dot | ConstructType.Call | TokenType.LeftParenthesis | TokenType.RightParenthesis], TokenType.Operator>],
-    [ConstructType.ExpressionList]: [Repeat<[ConstructType.Expression]>]
+    [ConstructType.Fn]: [TokenType.Identifier, Repeat([TokenType.Identifier])],
+    [ConstructType.Block]: [Repeat([TokenType.Space, ConstructType.Expression], TokenType.Newline)],
+    [ConstructType.Expression]: [Repeat([ConstructType.Value], TokenType.Operator)],
+    [ConstructType.ExpressionList]: [Repeat([ConstructType.Expression])],
+    [ConstructType.Value]: [TokenType.Identifier | TokenType.Integer | TokenType.Boolean | TokenType.Dot | ConstructType.Call | TokenType.LeftParenthesis | TokenType.RightParenthesis]
 }
-export type Construct<T extends ConstructType> = ConstructBody[T];
+export type Construct<T extends ConstructType> = typeof ConstructBody[T];
 
 export default function Format(tokens: Token[]): Construct<ConstructType.Block> {
 
-    const lines: Token[][] = [];
-    const line: Token[] = [];
-    for (const i of tokens)
-        if (i.type === TokenType.Newline)
-            lines.push(line.splice(0, line.length))
-        else
-            line.push(i);
-    lines.push(line);
+    const buildConstruct = function <T extends ConstructType>(constructType: T, tokens: Token[]): Construct<T> | null {
+        const type: Construct<T> = ConstructBody[constructType];
 
-    // for (const i of lines.filter(i => i.length > 0))
+        const construct: Construct<T>[] = [];
 
-    return [];
+        for (const i of tokens)
+
+        return null;
+    }
+
+    return buildConstruct(ConstructType.Block, tokens);
 }

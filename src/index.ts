@@ -13,8 +13,8 @@ io.print_out(capitalise('hello world'))
 
 export default function main(argv: string[]): number {
     const tokens = Lex(source, '<anonymous>');
-    const lines = Format(tokens);
-    const statements = Parse(lines);
+    const block = Format(tokens);
+    const statements = Parse(block);
 
     return 0;
 }
