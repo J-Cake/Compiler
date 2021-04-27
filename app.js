@@ -1,9 +1,7 @@
 import fs from 'fs';
-import sm from "source-map-support";
+import "source-map-support/register";
 
 const main = await import(JSON.parse(fs.readFileSync('./package.json', 'utf8')).main);
-
-sm.install();
 
 if (main.default && typeof main.default === 'function' && main.default.name === "main") {
     const code = main.default(process.argv);

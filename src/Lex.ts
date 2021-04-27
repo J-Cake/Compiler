@@ -4,7 +4,8 @@ export enum TokenType {
     Integer,
     Boolean,
     String,
-    ReservedWord,
+    ControlFlow,
+    Import,
     Identifier,
     Operator,
     Comment,
@@ -25,6 +26,10 @@ export enum Operator {
     Subtract,
     Multiply,
     Divide,
+    Modulo,
+    Exponent,
+
+    Factorial,
 
     Equals,
     LessThan,
@@ -35,30 +40,134 @@ export enum Operator {
     Not
 }
 
-export const operators: Record<Operator, (tok: string) => boolean> = {
-    [Operator.Add]: tok => tok === "+",
-    [Operator.Subtract]: tok => tok === "-",
-    [Operator.Multiply]: tok => tok === "*",
-    [Operator.Divide]: tok => tok === "/",
-    [Operator.Equals]: tok => tok === "==",
-    [Operator.LessThan]: tok => tok === "<",
-    [Operator.GreaterThan]: tok => tok === ">",
-    [Operator.And]: tok => tok === "and",
-    [Operator.Or]: tok => tok === "or",
-    [Operator.Not]: tok => tok === "!"
+export type operator = {
+    matcher: (tok: string) => boolean,
+    operands: 1 | 2,
+    precedence: number,
+    associativity: 'left' | 'right',
+    type: 'binary' | 'numeric'
+}
+
+export const operators: Record<Operator, operator> = {
+    [Operator.Add]: {
+        matcher: tok => tok === "+",
+        operands: 2,
+        precedence: 3,
+        associativity: 'left',
+        type: 'numeric'
+    },
+    [Operator.Subtract]: {
+        matcher: tok => tok === "-",
+        operands: 2,
+        precedence: 3,
+        associativity: 'left',
+        type: 'numeric'
+    },
+    [Operator.Multiply]: {
+        matcher: tok => tok === "*",
+        operands: 2,
+        precedence: 4,
+        associativity: 'left',
+        type: 'numeric'
+    },
+    [Operator.Divide]: {
+        matcher: tok => tok === "/",
+        operands: 2,
+        precedence: 4,
+        associativity: 'left',
+        type: 'numeric'
+    },
+    [Operator.Modulo]: {
+        matcher: tok => tok === "mod",
+        operands: 2,
+        precedence: 4,
+        associativity: 'left',
+        type: 'numeric'
+    },
+    [Operator.Exponent]: {
+        matcher: tok => tok === "^",
+        operands: 2,
+        precedence: 5,
+        type: 'numeric',
+        associativity: 'right'
+    },
+    [Operator.Factorial]: {
+        matcher: tok => tok === "!",
+        operands: 1,
+        precedence: 5,
+        associativity: 'left',
+        type: 'numeric'
+    },
+
+    [Operator.Equals]: {
+        matcher: tok => tok === "==",
+        operands: 2,
+        precedence: 2,
+        associativity: 'left',
+        type: 'binary'
+    },
+    [Operator.LessThan]: {
+        matcher: tok => tok === "<",
+        operands: 2,
+        precedence: 2,
+        associativity: 'left',
+        type: 'binary'
+    },
+    [Operator.GreaterThan]: {
+        matcher: tok => tok === ">",
+        operands: 2,
+        precedence: 2,
+        associativity: 'left',
+        type: 'binary'
+    },
+    [Operator.And]: {
+        matcher: tok => tok === "and",
+        operands: 2,
+        precedence: 1,
+        associativity: 'left',
+        type: 'binary'
+    },
+    [Operator.Or]: {
+        matcher: tok => tok === "or",
+        operands: 2,
+        precedence: 1,
+        associativity: 'left',
+        type: 'binary'
+    },
+    [Operator.Not]: {
+        matcher: tok => tok === "not",
+        operands: 1,
+        precedence: 1,
+        associativity: 'right',
+        type: 'binary'
+    }
+};
+
+export enum ControlFlow {
+    If,
+    Each,
+    Loop
+}
+
+
+export const controlFlowStruct: Record<ControlFlow, (tok: string) => boolean> = {
+    [ControlFlow.If]: tok => tok === 'if',
+    [ControlFlow.Each]: tok => tok === 'each',
+    [ControlFlow.Loop]: tok => tok === 'loop',
 };
 
 export const matchers: Record<TokenType, (tok: string) => boolean> = {
-    [TokenType.Operator]: tok => Object.values(operators).some(i => i(tok)),
+    [TokenType.Operator]: tok => Object.values(operators).some(i => i.matcher(tok)),
     [TokenType.Integer]: tok => /^-?\d+$/.test(tok),
     [TokenType.Boolean]: tok => tok === "true" || tok === "false",
     [TokenType.String]: tok => /^((?<![\\])['"])((?:.(?!(?<![\\])\1))*.?)\1$/.test(tok), // Thanks internet (https://www.metaltoad.com/blog/regex-quoted-string-escapable-quotes)
     [TokenType.Identifier]: tok => !reservedWords.includes(tok) && /^[a-zA-Z$_@][a-zA-Z0-9$_@]*$/.test(tok),
-    [TokenType.ReservedWord]: tok => reservedWords.includes(tok),
+    [TokenType.ControlFlow]: tok => Object.values(controlFlowStruct).some(i => i(tok)),
     [TokenType.Space]: tok => /^[ \t]+$/.test(tok),
     [TokenType.Newline]: tok => /^\n+$/.test(tok),
     [TokenType.Comment]: tok => /^#.*\n$/.test(tok),
 
+    [TokenType.Import]: tok => tok === "import",
     [TokenType.Comma]: tok => tok === ',',
     [TokenType.Dot]: tok => tok === '.',
     [TokenType.LeftParenthesis]: tok => tok === '(',
@@ -72,21 +181,26 @@ export const matchers: Record<TokenType, (tok: string) => boolean> = {
     [TokenType.Semicolon]: tok => tok === ';'
 };
 
-export type Token = {
+export type Token<T extends TokenType = any> = {
     source: string,
-    type: TokenType,
+    type: T,
     charIndex?: number,
     resource?: string
 }
 
 export const reservedWords: string[] = [
     'import',
-]
+    'export',
+    'return',
+    'if',
+    'each',
+    'loop'
+];
 
-export default function Lex(input: string, resource: string = "<unknown>"): Token[] {
+export default function Lex(input: string, resource: string = "<unknown>"): Token[] { // I love how simple this gets
     const tokens: Token[] = [];
 
-    let source = Array.from(input);
+    let source = Array.from(input.trim());
     let charIndex: number = 0;
 
     while (source.length > 0) {
@@ -117,6 +231,22 @@ export default function Lex(input: string, resource: string = "<unknown>"): Toke
                 msg: `SyntaxError: Token ${accumulator.join('')} wasn't recognised`
             }
     }
+
+    for (const [a, i] of tokens.entries())
+        if (i.type === TokenType.Newline && tokens[a - 1]?.type !== TokenType.Space)
+            tokens.splice(a + 1, 0, {
+                source: "",
+                type: TokenType.Space,
+                charIndex: i.charIndex,
+                resource: i.resource
+            })
+
+    tokens.splice(0, 0, {
+        source: "",
+        type: TokenType.Space,
+        charIndex: tokens[0].charIndex,
+        resource: tokens[0].resource
+    });
 
     return tokens;
 }
