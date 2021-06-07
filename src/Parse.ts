@@ -1,20 +1,20 @@
 import {Token, TokenType} from "./Lex";
 import Constructors, {removeSpace} from "./buildConstruct";
 
-// export type MatchChain = (TokenType | ConstructType | Matcher<(TokenType | ConstructType)[]>)[];
-
 export enum ConstructType { // Must go negative, otherwise, cannot be distinguished from TokenType
-    List = -1,
-    Dictionary = -2,
-    PropertyAccessor = -3,
-    Call = -4,
+    ScriptRoot = -1,
+    Import = -2,
+    Export = -3,
+    Module = -4,
     Function = -5,
-    Block = -6,
-    Expression = -7,
-    Value = -8,
-    ControlFlow = -9,
-    Statement = -10,
-    Import = -11
+    ControlFlow = -6,
+    Statement = -7,
+    List = -8,
+    Dictionary = -9,
+    PropertyAccessor = -10,
+    Call = -11,
+    Expression = -12,
+    Value = -13,
 }
 
 export interface Match {
@@ -45,9 +45,13 @@ export abstract class Matcher<Expr extends (TokenType | ConstructType)[]> implem
 export class Repeat<Expr extends (TokenType | ConstructType)[], Separator extends TokenType = TokenType.Comma> extends Matcher<Expr> {
     sep: Separator;
 
-    constructor(rule: Expr, sep?: Separator) {
+    trailingSeparators: boolean;
+
+    constructor(rule: Expr, sep?: Separator, trailingSeparators: boolean = false) {
         super(rule);
         this.sep = sep ?? TokenType.Comma as Separator;
+
+        this.trailingSeparators = trailingSeparators;
 
         if (rule.filter(i => i in ConstructType).length > 1)
             throw {msg: `Cannot match against two nested constructs`};
@@ -65,12 +69,37 @@ export class Repeat<Expr extends (TokenType | ConstructType)[], Separator extend
 
         const groups: [...Token[], Token<Separator>][] = [];
 
+        const brackets: [number, number, number] = [0, 0, 0] // parens, brackets, braces
+        const checkBrackets = function (i: Token): boolean {
+            if (i.type === TokenType.LeftParenthesis)
+                brackets[0]++;
+            else if (i.type === TokenType.RightParenthesis)
+                brackets[0]--;
+            else if (i.type === TokenType.LeftBracket)
+                brackets[1]++;
+            else if (i.type === TokenType.RightBracket)
+                brackets[1]--;
+            else if (i.type === TokenType.LeftBrace)
+                brackets[2]++;
+            else if (i.type === TokenType.RightBrace)
+                brackets[2]--;
+
+            return !(brackets[0] || brackets[1] || brackets[2]);
+        }
+
         const split: Token[] = [];
-        for (const i of tokens)
-            if (i.type === this.sep)
-                groups.push(split.splice(0, split.length).concat(i as Token<Separator>) as [...Token[], Token<Separator>]);
+        for (const i of tokens) {
+            if (checkBrackets(i) && i.type === this.sep)
+                if (!this.trailingSeparators && split.length > 0 || this.trailingSeparators)
+                    groups.push(split.splice(0, split.length).concat(i as Token<Separator>) as [...Token[], Token<Separator>]);
+                else
+                    throw {
+                        msg: `MatchError - Empty group`
+                    }
             else
                 split.push(i);
+        }
+        groups.push(split as [...Token[], Token<Separator>]);
 
         for (const [a, i] of groups.entries()) {
             const matcher = Array.from(this.rule);
@@ -94,7 +123,12 @@ export class Repeat<Expr extends (TokenType | ConstructType)[], Separator extend
                     };
         }
 
-        return groups;
+        if (!groups || groups.length <= 0)
+            return [];
+
+        groups[groups.length - 1].push({type: this.sep, source: ''}); // This is to allow the `.slice(0, -1)` on the result of this function
+
+        return groups as [...Token[], Token<Separator>][];
     }
 
     private matches(tokens: Token[], sep: Token): boolean {
@@ -130,44 +164,6 @@ export class Select<Expr extends (TokenType | ConstructType)[]> extends Matcher<
     }
 }
 
-export class Optional<Expr extends (TokenType | ConstructType)[]> extends Matcher<Expr> {
-    constructor(rule) {
-        super(rule);
-
-        if (rule.filter(i => i in ConstructType).length > 1)
-            throw {msg: `Cannot match against two nested constructs`};
-    }
-
-    /**
-     * Return true if the token list has been omitted, otherwise, match only if the rule matches the list of tokens.
-     * @param tokens the list of tokens to match against
-     */
-    action(tokens: Token[]): boolean {
-        if (tokens.length === 0)
-            return true;
-
-        const rule = Array.from(this.rule);
-
-        while (rule.length > 0)
-            if (rule[0] in TokenType && tokens[0].type !== rule.shift())
-                return false;
-
-        rule.reverse();
-        tokens.reverse();
-
-        while (rule.length > 0)
-            if (rule[0] in TokenType && tokens[0].type !== rule.shift())
-                return false;
-
-        try {
-            constructors[rule[0]](tokens.reverse());
-            return false;
-        } catch (err) {
-            return true;
-        }
-    }
-}
-
 export type Construct<T extends ConstructType, K = any> = {
     constructType: T;
     body: Token[] | Construct<any>[],
@@ -176,6 +172,6 @@ export type Construct<T extends ConstructType, K = any> = {
 
 const constructors = Constructors();
 
-export default function Parse(tokens: Token[]): Construct<ConstructType.Block> {
-    return constructors[ConstructType.Block](tokens);
+export default function Parse(tokens: Token[]): Construct<ConstructType.ScriptRoot> {
+    return constructors[ConstructType.ScriptRoot](tokens);
 }

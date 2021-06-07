@@ -1,14 +1,7 @@
-import fs from 'fs';
-import "source-map-support/register";
+const file = process.argv.find(i => i.startsWith('--entry='));
 
-const main = await import(JSON.parse(fs.readFileSync('./package.json', 'utf8')).main);
-
-if (main.default && typeof main.default === 'function' && main.default.name === "main") {
-    const code = main.default(process.argv);
-
-    if (code instanceof Promise)
-        code.then(res => process.exit(res));
-    else
-        process.exit(code);
-}else
-    throw new ReferenceError(`Could not locate main function`);
+if (file)
+    require(file.match(/^--entry=(.+)$/)[1]).default(process.argv);
+else
+    require(require('package.json').main).default(process.argv);
+// require(?.match(/^--entry=(.+)$/)[1] ?? require('./package.json').main).default(process.argv);

@@ -1,5 +1,5 @@
-import {Construct, ConstructType, Optional, Repeat, Select} from "./Parse";
-import {operator, operators, Token, TokenType} from "./Lex";
+import {Construct, ConstructType, Repeat, Select} from "./Parse";
+import {Token, TokenType} from "./Lex";
 
 export type ConstructMap = {
     [P in ConstructType]: (tokens: Token[]) => Construct<P>
@@ -20,7 +20,10 @@ export default function buildConstructors(): ConstructMap {
                     exprList.push(expr.splice(0, expr.length));
             };
 
-            expr.push(i);
+            if (i.type === TokenType.Comma)
+                reached0();
+            else
+                expr.push(i);
 
             if (i.type === TokenType.LeftParenthesis)
                 brackets[0]++;
@@ -46,6 +49,7 @@ export default function buildConstructors(): ConstructMap {
         }
         if (expr.length > 0)
             exprList.push(expr);
+
         for (const i of exprList)
             try {
                 constructors[ConstructType.Expression](i)
@@ -57,6 +61,46 @@ export default function buildConstructors(): ConstructMap {
                 }
             }
         return exprList;
+    }
+    const countParens = function* (tokens: Token[], includePrev: boolean = true): Generator<Token[]> {
+        const brackets: [number, number, number] = [0, 0, 0];
+        const accumulator: Token[] = [];
+
+        for (const i of tokens) {
+            accumulator.push(i);
+            if (i.type === TokenType.LeftParenthesis)
+                brackets[0]++;
+            else if (i.type === TokenType.RightParenthesis) {
+                brackets[0]--;
+                if (!(brackets[0] || brackets[1] || brackets[2]))
+                    if (includePrev)
+                        yield Array.from(accumulator);
+                    else
+                        yield accumulator.splice(0, accumulator.length)
+            } else if (i.type === TokenType.LeftBracket)
+                brackets[1]++;
+            else if (i.type === TokenType.RightBracket) {
+                brackets[1]--;
+                if (!(brackets[0] || brackets[1] || brackets[2]))
+                    if (includePrev)
+                        yield Array.from(accumulator);
+                    else
+                        yield accumulator.splice(0, accumulator.length)
+            } else if (i.type === TokenType.LeftBrace)
+                brackets[2]++;
+            else if (i.type === TokenType.RightBrace) {
+                brackets[2]--;
+                if (!(brackets[0] || brackets[1] || brackets[2]))
+                    if (includePrev)
+                        yield Array.from(accumulator);
+                    else
+                        yield accumulator.splice(0, accumulator.length)
+            }
+        }
+
+        // Only if there was a change, should we re-emit the last of the accumulator.
+        if (![TokenType.RightBrace, TokenType.RightBracket, TokenType.RightParenthesis].includes(tokens[tokens.length - 1].type))
+            yield accumulator;
     }
 
     const constructors: ConstructMap = {
@@ -79,186 +123,192 @@ export default function buildConstructors(): ConstructMap {
             const grammar: [TokenType.LeftBrace, Repeat<[TokenType.Identifier, TokenType.Colon, ConstructType.Expression]>, TokenType.RightBrace] =
                 [TokenType.LeftBrace, new Repeat([TokenType.Identifier, TokenType.Colon, ConstructType.Expression]), TokenType.RightBrace];
 
+            throw {
+                msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Dictionary]}`,
+                matcher: ConstructType.Dictionary,
+                tokens
+            }
 
-            return {body: undefined, constructType: ConstructType.Dictionary}
+            // return {body: undefined, constructType: ConstructType.Dictionary}
         },
         [ConstructType.Call](_tok: Token[]): Construct<ConstructType.Call, Construct<ConstructType.Value>> {
             // We gotta do a backwards bracket count
-            let bracketCount = 0;
-            const tokens = removeSpace(_tok).reverse();
+            if (_tok.length > 2 && _tok.some(i => i.type === TokenType.LeftParenthesis)) { // just a tiny little optimisation
+                let bracketCount = 0;
+                const tokens = Array.from(removeSpace(_tok)).reverse();
 
-            let identifier: Token[];
-            let params: Token[];
+                if (tokens.length > 2 && tokens.some(i => i.type === TokenType.LeftParenthesis)) {
 
-            for (const [a, i] of tokens.entries()) {
-                if (i.type === TokenType.RightParenthesis)
-                    bracketCount++;
-                else if (i.type === TokenType.LeftParenthesis) {
-                    bracketCount--;
-                    if (bracketCount <= 0) { // We have reached the start
-                        identifier = tokens.slice(a + 1).reverse();
-                        params = tokens.slice(0, a + 1).reverse();
-                        break;
+                    let identifier: Token[];
+                    let params: Token[];
+
+                    for (const [a, i] of tokens.entries()) {
+                        if (i.type === TokenType.RightParenthesis)
+                            bracketCount++;
+                        else if (i.type === TokenType.LeftParenthesis) {
+                            bracketCount--;
+                            if (bracketCount <= 0) { // We have reached the start
+                                identifier = tokens.slice(a + 1).reverse();
+                                params = tokens.slice(0, a + 1).reverse().slice(1, -1);
+                                break;
+                            }
+                        }
                     }
-                }
-            }
 
-            return {
-                body: matchExpressionList(params.slice(1, -1)).map(i => constructors[ConstructType.Expression](i)),
-                constructType: ConstructType.Call,
-                data: constructors[ConstructType.Value](identifier)
-            };
+                    return {
+                        body: matchExpressionList(params).map(i => constructors[ConstructType.Expression](i)),
+                        constructType: ConstructType.Call,
+                        data: constructors[ConstructType.Value](identifier),
+                    };
+                } else throw {
+                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Call]}`,
+                    matcher: ConstructType.Call,
+                    tokens: tokens
+                }
+            } else throw {
+                msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Call]}`,
+                matcher: ConstructType.Call,
+                tokens: _tok
+            }
         },
         [ConstructType.PropertyAccessor](_tok: Token[]): Construct<ConstructType.PropertyAccessor, Construct<ConstructType.Value>> {
             let bracketCount = 0;
             const tokens = removeSpace(_tok).reverse();
 
             let identifier: Token[];
-            let params: Token[];
+            let prop: Token[];
 
-            for (const [a, i] of tokens.entries()) {
+            for (const [a, i] of tokens.entries())
                 if (i.type === TokenType.RightBracket)
                     bracketCount++;
                 else if (i.type === TokenType.LeftBracket) {
                     bracketCount--;
                     if (bracketCount <= 0) { // We have reached the start
                         identifier = tokens.slice(a + 1).reverse();
-                        params = tokens.slice(0, a + 1).reverse();
+                        prop = tokens.slice(0, a + 1).reverse().slice(1, -1);
                         break;
                     }
                 }
-            }
+
+            if (!prop || !identifier || prop.length <= 0 || identifier.length <= 0)
+                throw {
+                    msg: `SyntaxError - Expected Value - ${ConstructType[ConstructType.PropertyAccessor]}`,
+                    matcher: ConstructType.PropertyAccessor,
+                    tokens
+                }
 
             return {
-                body: matchExpressionList(params.slice(1, -1)).map(i => constructors[ConstructType.Expression](i)),
+                body: [constructors[ConstructType.Expression](prop)],
                 constructType: ConstructType.PropertyAccessor,
                 data: constructors[ConstructType.Value](identifier)
             };
         },
-        [ConstructType.Function](_tok: Token[]): Construct<ConstructType.Function> {
+        [ConstructType.Function](_tok: Token[]): Construct<ConstructType.Function, Token<TokenType.Identifier>[]> {
+            // TODO: Add some sort of `do` expression, where passing a list of functions will generate a new function, calling all its children in sequence
             const tokens = removeSpace(_tok);
 
-            return {body: undefined, constructType: ConstructType.Function}
-        },
-        [ConstructType.Block](tokens: Token[]): Construct<ConstructType.Block> {
-            return {
-                body: new Repeat([TokenType.Space, ConstructType.Statement], TokenType.Newline)
-                    .action(tokens).map(i => constructors[ConstructType.Statement](i.slice(0, -1))),
-                constructType: ConstructType.Block
-            }
-        },
-        // We may need to handle cases where bracket counts are completed within lists, meaning we need to account for all bracket types.
-        // Only once all three bracket types are 0 can we safely say the expression has terminated.
-        [ConstructType.Expression](_tok: Token[]): Construct<ConstructType.Expression, { operand: Construct<ConstructType.Value>, operator: Token<TokenType.Operator> }> {
-            const tokens = removeSpace(_tok);
-            const grammar: [Optional<[ConstructType.Value]>, TokenType.Operator, Select<[ConstructType.Value, ConstructType.Expression]>] =
-                [new Optional([ConstructType.Value]), TokenType.Operator, new Select([ConstructType.Value, ConstructType.Expression])];
+            const params: Token<TokenType.Identifier>[] = [];
 
-            const checkLeftOperator = function (): ConstructType | TokenType | null {
-                if (tokens[0].type === TokenType.Operator) {
-                    const op = tokens[0].source;
-                    const operator: operator = operators[Object.keys(operators).find(i => (operators[i] as operator).matcher(op))];
+            const trigger = tokens.findIndex(i => i.type === TokenType.Lambda);
+            if (trigger >= 0) {
+                const paramList = tokens.slice(0, trigger);
+                const isNamed = paramList.some(i => i.type === TokenType.LeftParenthesis) && paramList[0].type === TokenType.Identifier;
 
-                    if (operator.associativity === 'right' && operator.operands === 1)
-                        return grammar[2].action(tokens.slice(1));
-                    return null;
-                } else
-                    return null;
-            }
-
-            const secondConstruct = grammar[2].action(tokens.slice(1));
-            const left = checkLeftOperator();
-
-            if (left && secondConstruct === ConstructType.Value)
-                return {
-                    body: [constructors[ConstructType.Value](tokens.slice(1))],
-                    constructType: ConstructType.Expression,
-                    data: {
-                        operand: null,
-                        operator: tokens[0] as Token<TokenType.Operator>
-                    }
-                };
-            else if (left && secondConstruct === ConstructType.Expression)
-                return {
-                    body: [constructors[ConstructType.Expression](tokens.slice(1))],
-                    constructType: ConstructType.Expression,
-                    data: {
-                        operand: null,
-                        operator: tokens[0] as Token<TokenType.Operator>
-                    }
-                }
-            else { // First parameter is a value call, meaning it can contain expressions.
-                let bracketCount: number = 0;
-
-                const buildConstruct = function (a, i): Construct<ConstructType.Expression> {
-                    try {
-                        const op1 = constructors[ConstructType.Value](tokens.slice(0, a));
-                        return {
-                            body: tokens.slice(a + 1),
-                            constructType: ConstructType.Expression,
-                            data: {
-                                operand: op1,
-                                operator: tokens[a] as Token<TokenType.Operator>
-                            }
-                        }
-                    } catch (err) {
+                if (isNamed) {
+                    if (paramList[1].type === TokenType.LeftParenthesis && paramList[paramList.length - 1].type === TokenType.RightParenthesis)
+                        params.push(...new Repeat([TokenType.Identifier]).action(paramList.slice(2, -1)).map(i => i[0] as Token<TokenType.Identifier>));
+                    else
                         throw {
-                            msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Expression]}`,
-                            matcher: ConstructType.Expression,
+                            msg: `SyntaxError - Named Functions must be parenthesised - ${ConstructType[ConstructType.Function]}`,
+                            matcher: ConstructType.Function,
                             tokens
                         }
-                    }
+                } else {
+                    if (paramList[0].type === TokenType.LeftParenthesis && paramList[paramList.length - 1].type === TokenType.RightParenthesis)
+                        params.push(...new Repeat([TokenType.Identifier]).action(paramList.slice(1, -1)).map(i => i[0] as Token<TokenType.Identifier>))
+                    else
+                        params.push(...new Repeat([TokenType.Identifier]).action(paramList).map(i => i[0] as Token<TokenType.Identifier>));
+                }
+            } else
+                throw {
+                    msg: `SyntaxError - No function declarator found - ${ConstructType[ConstructType.Function]}`,
+                    matcher: ConstructType.Function,
+                    tokens
                 }
 
-                for (const [a, i] of tokens.entries())
-                    if (i.type === TokenType.LeftParenthesis)
-                        bracketCount++;
-                    else if (i.type === TokenType.RightParenthesis) {
-                        bracketCount--;
-                        if (bracketCount <= 0)
-                            return buildConstruct(a, i);
-                    } else if (i.type === TokenType.Operator && bracketCount === 0)
-                        return buildConstruct(a, i);
+            const expr = constructors[ConstructType.Expression](tokens.slice(trigger + 1));
+
+            return {
+                body: [expr],
+                constructType: ConstructType.Function,
+                data: params
             }
+
+        },
+        [ConstructType.Expression](_tok: Token[]): Construct<ConstructType.Expression, Token<TokenType.Operator>[]> {
+            // TODO: Implement parenthesised expressions
+
+            const rpt = new Repeat([ConstructType.Value], TokenType.Operator);
+            const body = rpt.action(removeSpace(_tok)).map(i => [constructors[ConstructType.Value](i.slice(0, -1)), i.pop()]).flat(1).slice(0, -1);
+
+            return {
+                body: body.map(i => 'body' in i ? i : null),
+                data: body.map(i => 'body' in i ? null : i),
+                constructType: ConstructType.Expression
+            };
         },
         [ConstructType.Value](_tok: Token[]): Construct<ConstructType.Value> {
             const tokens = removeSpace(_tok);
-            const grammar: [Select<[TokenType.Identifier, TokenType.Integer, TokenType.Boolean, TokenType.Dot, ConstructType.Call, ConstructType.PropertyAccessor, ConstructType.List, ConstructType.Dictionary, TokenType.LeftParenthesis, TokenType.RightParenthesis]>] =
-                [new Select([TokenType.Identifier, TokenType.Integer, TokenType.Boolean, TokenType.Dot, ConstructType.Call, ConstructType.PropertyAccessor, ConstructType.List, ConstructType.Dictionary, TokenType.LeftParenthesis, TokenType.RightParenthesis])];
 
-            const type = grammar[0].action(tokens);
-
-            if (type in TokenType)
-                return {body: [tokens[0]], constructType: ConstructType.Value};
-            else if (type in ConstructType)
-                return {body: constructors[type](tokens), constructType: ConstructType.Value};
-            else
+            if (!_tok || _tok.length <= 0)
                 throw {
-                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Value]}`,
+                    msg: `SyntaxError - Expected Value - ${ConstructType[ConstructType.Value]}`,
                     matcher: ConstructType.Value,
                     tokens
                 }
+
+            return {
+                body: Array.from(countParens(tokens)).map(tokens => {
+                    // TODO: Add Dictionaries and Lists
+                    const constructSelect = new Select([ConstructType.Call, ConstructType.PropertyAccessor, ConstructType.Function]).action(tokens);
+
+                    if (constructSelect)
+                        return constructors[constructSelect](tokens);
+                    else if (!tokens.find(i => i.type === TokenType.Dot))
+                        return [tokens[0]];
+                    else
+                        return tokens.reduce((a: Token[][], i: Token) => i.type === TokenType.Dot ? [...a, []] : [...a.slice(0, -1), a[a.length - 1].concat(i)], [[]]);
+                }),
+                constructType: ConstructType.Value
+            };
         },
         [ConstructType.ControlFlow](_tok: Token[]): Construct<ConstructType.ControlFlow> {
-            const grammar: [TokenType.ControlFlow, ConstructType.Expression, ConstructType.Block] =
-                [TokenType.ControlFlow, ConstructType.Expression, ConstructType.Block];
-
+            const tokens = removeSpace(_tok);
+            if (tokens[0].type !== TokenType.ControlFlow)
+                throw {
+                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.ControlFlow]}`,
+                    matcher: ConstructType.ControlFlow,
+                    tokens
+                }
 
             return {body: undefined, constructType: ConstructType.ControlFlow}
         },
         [ConstructType.Statement](_tok: Token[]): Construct<ConstructType.Statement> {
-            const grammar: [Select<[ConstructType.Import, ConstructType.ControlFlow, ConstructType.Function, ConstructType.Expression]>] =
-                [new Select([ConstructType.Import, ConstructType.ControlFlow, ConstructType.Function, ConstructType.Expression])];
-
-            const type = grammar[0].action(removeSpace(_tok));
+            const tokens = removeSpace(_tok);
+            const grammar = new Select([ConstructType.Import, ConstructType.ControlFlow, ConstructType.Function, ConstructType.Expression])
+            const type = grammar.action(tokens);
 
             if (type in ConstructType)
-                return {body: constructors[type](_tok), constructType: ConstructType.Statement};
-            else throw {
-                msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Statement]}`,
-                matcher: ConstructType.Statement,
-                tokens: removeSpace(_tok)
-            }
+                return {
+                    body: [constructors[type](tokens)],
+                    constructType: ConstructType.Statement
+                };
+            else
+                throw {
+                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Statement]}`,
+                    matcher: ConstructType.Statement,
+                    tokens
+                }
         },
         [ConstructType.Import](_tok: Token[]): Construct<ConstructType.Import> {
             const tokens = removeSpace(_tok);
@@ -266,13 +316,54 @@ export default function buildConstructors(): ConstructMap {
                 [TokenType.Import, new Repeat([TokenType.String])];
 
             if (tokens[0].type === grammar[0] && grammar[1].action(tokens.slice(1)))
-                return {body: tokens.filter(i => i.type === TokenType.String), constructType: ConstructType.Import};
+                return {
+                    body: tokens.filter(i => i.type === TokenType.String),
+                    constructType: ConstructType.Import
+                };
             else throw {
                 msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Import]}`,
                 matcher: ConstructType.Import,
                 tokens
             }
         },
+        [ConstructType.Export](_tok: Token[]): Construct<ConstructType.Export> {
+            const tokens = removeSpace(_tok);
+
+            const grammar: Repeat<[ConstructType.Expression]> = new Repeat([ConstructType.Expression]);
+
+            if (tokens[0].type === grammar[0] && grammar[1].action(tokens.slice(1)))
+                return {
+                    body: grammar.action(tokens).map(i => constructors[ConstructType.Expression](i.slice(0, -1))),
+                    constructType: ConstructType.Export
+                };
+            else throw {
+                msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Export]}`,
+                matcher: ConstructType.Export,
+                tokens
+            }
+        },
+        [ConstructType.Module](_tok: Token[]): Construct<ConstructType.Module, string> {
+            const tokens = removeSpace(_tok);
+            if (tokens[0].type === TokenType.Module && tokens[1].type === TokenType.Identifier)
+                return {
+                    body: new Repeat([ConstructType.Statement]).action(tokens.slice(2)).map(i => constructors[ConstructType.Statement](i)),
+                    constructType: ConstructType.Module,
+                    data: tokens[1].source
+                };
+            else
+                throw {
+                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Module]}`,
+                    matcher: ConstructType.Module,
+                    tokens
+                }
+        },
+        [ConstructType.ScriptRoot](_tok: Token[]): Construct<ConstructType.ScriptRoot> {
+            return {
+                body: new Repeat([ConstructType.Statement], TokenType.Newline) // TODO: LAST TOKEN MAY NOT BE A NEWLINE
+                    .action(_tok).map(i => constructors[ConstructType.Statement](i.slice(0, -1))),
+                constructType: ConstructType.ScriptRoot
+            }
+        }
     }
 
     return constructors;

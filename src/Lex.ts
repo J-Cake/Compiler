@@ -6,6 +6,8 @@ export enum TokenType {
     String,
     ControlFlow,
     Import,
+    Export,
+    Module,
     Identifier,
     Operator,
     Comment,
@@ -18,7 +20,11 @@ export enum TokenType {
     LeftBrace,
     RightBrace,
     Colon,
-    Semicolon
+    Semicolon,
+    Lambda,
+    // TODO: Add some sort of assignment operator that can be used for temporary assignment.
+    // `getStyle(a = getCurrentPointer(), styleSheet[a + 1])`
+    // This would allow for the reuse of certain variables, and allow for much simpler expressions.
 }
 
 export enum Operator {
@@ -85,7 +91,7 @@ export const operators: Record<Operator, operator> = {
         type: 'numeric'
     },
     [Operator.Exponent]: {
-        matcher: tok => tok === "^",
+        matcher: tok => tok === "^" || tok === "**",
         operands: 2,
         precedence: 5,
         type: 'numeric',
@@ -167,7 +173,10 @@ export const matchers: Record<TokenType, (tok: string) => boolean> = {
     [TokenType.Newline]: tok => /^\n+$/.test(tok),
     [TokenType.Comment]: tok => /^#.*\n$/.test(tok),
 
+    [TokenType.Lambda]: tok => tok === "=>",
     [TokenType.Import]: tok => tok === "import",
+    [TokenType.Export]: tok => tok === "export",
+    [TokenType.Module]: tok => tok === "module",
     [TokenType.Comma]: tok => tok === ',',
     [TokenType.Dot]: tok => tok === '.',
     [TokenType.LeftParenthesis]: tok => tok === '(',

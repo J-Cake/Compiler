@@ -2,16 +2,14 @@
     "name": "ark",
     "version": "1.0.0",
     "description": "",
-    "type": "module",
-    "main": "./build/out/index.js",
-    "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
-    },
+    "main": "./build/index.js",
+    "type": "commonjs",
     "keywords": [],
     "author": "",
     "license": "ISC",
     "devDependencies": {
         "@types/node": "^14.14.31",
-        "source-map-support": "^0.5.19"
+        "source-map-support": "^0.5.19",
+        "esbuild": "^0.11.19"
     }
 }
