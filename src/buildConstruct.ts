@@ -282,20 +282,9 @@ export default function buildConstructors(): ConstructMap {
                 constructType: ConstructType.Value
             };
         },
-        [ConstructType.ControlFlow](_tok: Token[]): Construct<ConstructType.ControlFlow> {
-            const tokens = removeSpace(_tok);
-            if (tokens[0].type !== TokenType.ControlFlow)
-                throw {
-                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.ControlFlow]}`,
-                    matcher: ConstructType.ControlFlow,
-                    tokens
-                }
-
-            return {body: undefined, constructType: ConstructType.ControlFlow}
-        },
         [ConstructType.Statement](_tok: Token[]): Construct<ConstructType.Statement> {
             const tokens = removeSpace(_tok);
-            const grammar = new Select([ConstructType.Import, ConstructType.ControlFlow, ConstructType.Function, ConstructType.Expression])
+            const grammar = new Select([ConstructType.Import, ConstructType.Function, ConstructType.Expression])
             const type = grammar.action(tokens);
 
             if (type in ConstructType)

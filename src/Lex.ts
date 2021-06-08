@@ -4,7 +4,6 @@ export enum TokenType {
     Integer,
     Boolean,
     String,
-    ControlFlow,
     Import,
     Export,
     Module,
@@ -149,26 +148,12 @@ export const operators: Record<Operator, operator> = {
     }
 };
 
-export enum ControlFlow {
-    If,
-    Each,
-    Loop
-}
-
-
-export const controlFlowStruct: Record<ControlFlow, (tok: string) => boolean> = {
-    [ControlFlow.If]: tok => tok === 'if',
-    [ControlFlow.Each]: tok => tok === 'each',
-    [ControlFlow.Loop]: tok => tok === 'loop',
-};
-
 export const matchers: Record<TokenType, (tok: string) => boolean> = {
     [TokenType.Operator]: tok => Object.values(operators).some(i => i.matcher(tok)),
     [TokenType.Integer]: tok => /^-?\d+$/.test(tok),
     [TokenType.Boolean]: tok => tok === "true" || tok === "false",
     [TokenType.String]: tok => /^((?<![\\])['"])((?:.(?!(?<![\\])\1))*.?)\1$/.test(tok), // Thanks internet (https://www.metaltoad.com/blog/regex-quoted-string-escapable-quotes)
     [TokenType.Identifier]: tok => !reservedWords.includes(tok) && /^[a-zA-Z$_@][a-zA-Z0-9$_@]*$/.test(tok),
-    [TokenType.ControlFlow]: tok => Object.values(controlFlowStruct).some(i => i(tok)),
     [TokenType.Space]: tok => /^[ \t]+$/.test(tok),
     [TokenType.Newline]: tok => /^\n+$/.test(tok),
     [TokenType.Comment]: tok => /^#.*\n$/.test(tok),

@@ -20,7 +20,6 @@ export function reconstructCode(obj: Construct<ConstructType.ScriptRoot>): strin
         [ConstructType.Export]: body => `export ${(body.body as Construct<ConstructType.Value>[]).map(i => reconstructers[ConstructType.Value](i as Construct<ConstructType.Value>)).join(', ')}`,
         [ConstructType.Module]: body => `namespace ${(body.body as Token<TokenType.String>[]).map(i => `'${i.source.slice(1, -1)}'`).join(', ')}`,
         [ConstructType.Function]: body => `(${body.data.map(i => i.source).join(', ')}) => ${reconstructers[ConstructType.Expression](body.body[0] as Construct<ConstructType.Expression>)}`,
-        [ConstructType.ControlFlow]: body => "",
         [ConstructType.Statement]: body => 'constructType' in body.body[0] ? reconstructers[body.body[0].constructType](body.body[0]) : '',
         [ConstructType.List]: body => "",
         [ConstructType.Dictionary]: body => "",
