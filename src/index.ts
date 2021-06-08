@@ -25,11 +25,9 @@ io.println_out(hyp(3, 4))
 
 export default function main(argv: string[]): number {
     // const tokens = Lex(`capitalise(string) => split(string, ' ').map(i => str.join([i[0].upper, i.range(1).lower]), '')`, '<anonymous>');
-    const tokens = Lex(`hyp(x, y) => calc.sqrt(x ^ 2 + y ^ 2)`, '<anonymous>');
+    const tokens = Lex(`hyp(x, y) => calc.sqrt(x ** 2 + y ** 2)`, '<anonymous>');
     const block = Parse(tokens);
     const asm = Convert(block);
-
-    console.log(asm);
 
     return 0;
 }
