@@ -1,0 +1,12 @@
+# Imaginary HTTP server
+
+# http is not a system library.
+# http is a 1st party library which ships with the SDK.
+
+import 'http', 'os', 'conversions'
+
+main(args) => server is http.init([
+    '/': req => req.answer.file('index.html'),
+    '/master.css': req => req.answer.file('master.css')
+    '/time': req => req.answer.text(os.getTime().prettyPrint())
+], Number(args.port) or 2560)

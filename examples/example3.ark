@@ -1,0 +1,8 @@
+# Sorting algorithm - Insertion Sort
+
+import 'random', 'conversion'
+
+List.reduce(reducer, init) => i in parent -> reducer(init, i)
+insertion(numbers) => numbers.reduce((accumulator, i) => accumulator.insert(i, accumulator.index(j => j > i)), [])
+
+main(args) => io.list_out(insertion(random.listOf(Number(args.length), x => random.int(0, 10))))

@@ -1,0 +1,14 @@
+# Guessing Game
+
+import 'io', 'random', 'conversion'
+
+main(args) => repeat -> i and [number: random.int(0, 100)] repeat ->
+    if not io.prompt('Pick a number', x => conversion.Number(x)) == i.number
+        io.println('You guessed wrong')
+    else if i.count >= 10 do
+        io.println_out('You're out of guesses'),
+        i.break()
+    else do
+        io.println_out('Guessed it!'),
+        i.break()
+
