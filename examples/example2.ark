@@ -5,7 +5,7 @@
 
 import 'http', 'os', 'conversions'
 
-main(args) => server is http.init([
+main(args) => server <- http.init([
     '/': req => req.answer.file('index.html'),
     '/master.css': req => req.answer.file('master.css')
     '/time': req => req.answer.text(os.getTime().prettyPrint())

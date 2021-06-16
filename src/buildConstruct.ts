@@ -1,4 +1,4 @@
-import {Construct, ConstructType, Repeat, Select} from "./Parse";
+import {Construct, ConstructType, Repeat, Select, Value} from "./Parse";
 import {Token, TokenType} from "./Lex";
 
 export type ConstructMap = {
@@ -9,106 +9,108 @@ export function removeSpace(tokens: Token[]): Token<Exclude<TokenType, TokenType
     return tokens.filter(i => i.type !== TokenType.Space);
 }
 
-export default function buildConstructors(): ConstructMap {
-    const matchExpressionList = function (tokens: Token[], onClose: 'bracket' | 'brace' | 'paren' = 'paren'): Token[][] {
-        const exprList: Token[][] = [];
-        const expr: Token[] = [];
-        const brackets: [number, number, number] = [0, 0, 0] // paren, brace, bracket
-        for (const i of tokens) {
-            const reached0 = function () {
-                if (brackets[0] === 0 && brackets[1] === 0 && brackets[2] === 0)
-                    exprList.push(expr.splice(0, expr.length));
-            };
+const matchExpressionList = function (tokens: Token[], constructors: ConstructMap, onClose: 'bracket' | 'brace' | 'paren' = 'paren'): Token[][] {
+    const exprList: Token[][] = [];
+    const expr: Token[] = [];
+    const brackets: [number, number, number] = [0, 0, 0] // paren, brace, bracket
+    for (const i of tokens) {
+        const reached0 = function () {
+            if (brackets[0] === 0 && brackets[1] === 0 && brackets[2] === 0)
+                exprList.push(expr.splice(0, expr.length));
+        };
 
-            if (i.type === TokenType.Comma)
+        if (i.type === TokenType.Comma)
+            reached0();
+        else
+            expr.push(i);
+
+        if (i.type === TokenType.LeftParenthesis)
+            brackets[0]++;
+        else if (i.type === TokenType.RightParenthesis) {
+            brackets[0]--;
+            if (onClose === 'paren')
+                reached0()
+        }
+        if (i.type === TokenType.LeftBrace)
+            brackets[1]++;
+        else if (i.type === TokenType.RightBrace) {
+            brackets[1]--;
+            if (onClose === 'brace')
+                reached0()
+        }
+        if (i.type === TokenType.LeftBracket)
+            brackets[2]++;
+        else if (i.type === TokenType.RightBracket) {
+            brackets[2]--;
+            if (onClose === 'bracket')
                 reached0();
-            else
-                expr.push(i);
+        }
+    }
+    if (expr.length > 0)
+        exprList.push(expr);
 
-            if (i.type === TokenType.LeftParenthesis)
-                brackets[0]++;
-            else if (i.type === TokenType.RightParenthesis) {
-                brackets[0]--;
-                if (onClose === 'paren')
-                    reached0()
-            }
-            if (i.type === TokenType.LeftBrace)
-                brackets[1]++;
-            else if (i.type === TokenType.RightBrace) {
-                brackets[1]--;
-                if (onClose === 'brace')
-                    reached0()
-            }
-            if (i.type === TokenType.LeftBracket)
-                brackets[2]++;
-            else if (i.type === TokenType.RightBracket) {
-                brackets[2]--;
-                if (onClose === 'bracket')
-                    reached0();
+    for (const i of exprList)
+        try {
+            constructors[ConstructType.Expression](i)
+        } catch (err) {
+            throw {
+                msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Expression]}`,
+                matcher: ConstructType.Expression,
+                tokens
             }
         }
-        if (expr.length > 0)
-            exprList.push(expr);
+    return exprList;
+}
+const countParens = function* (tokens: Token[], includePrev: boolean = true): Generator<Token[]> {
+    const brackets: [number, number, number] = [0, 0, 0];
+    const accumulator: Token[] = [];
 
-        for (const i of exprList)
-            try {
-                constructors[ConstructType.Expression](i)
-            } catch (err) {
-                throw {
-                    msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Expression]}`,
-                    matcher: ConstructType.Expression,
-                    tokens
-                }
-            }
-        return exprList;
-    }
-    const countParens = function* (tokens: Token[], includePrev: boolean = true): Generator<Token[]> {
-        const brackets: [number, number, number] = [0, 0, 0];
-        const accumulator: Token[] = [];
-
-        for (const i of tokens) {
-            accumulator.push(i);
-            if (i.type === TokenType.LeftParenthesis)
-                brackets[0]++;
-            else if (i.type === TokenType.RightParenthesis) {
-                brackets[0]--;
-                if (!(brackets[0] || brackets[1] || brackets[2]))
-                    if (includePrev)
-                        yield Array.from(accumulator);
-                    else
-                        yield accumulator.splice(0, accumulator.length)
-            } else if (i.type === TokenType.LeftBracket)
-                brackets[1]++;
-            else if (i.type === TokenType.RightBracket) {
-                brackets[1]--;
-                if (!(brackets[0] || brackets[1] || brackets[2]))
-                    if (includePrev)
-                        yield Array.from(accumulator);
-                    else
-                        yield accumulator.splice(0, accumulator.length)
-            } else if (i.type === TokenType.LeftBrace)
-                brackets[2]++;
-            else if (i.type === TokenType.RightBrace) {
-                brackets[2]--;
-                if (!(brackets[0] || brackets[1] || brackets[2]))
-                    if (includePrev)
-                        yield Array.from(accumulator);
-                    else
-                        yield accumulator.splice(0, accumulator.length)
-            }
+    for (const i of tokens) {
+        accumulator.push(i);
+        if (i.type === TokenType.LeftParenthesis)
+            brackets[0]++;
+        else if (i.type === TokenType.RightParenthesis) {
+            brackets[0]--;
+            if (!(brackets[0] || brackets[1] || brackets[2]))
+                if (includePrev)
+                    yield Array.from(accumulator);
+                else
+                    yield accumulator.splice(0, accumulator.length)
+        } else if (i.type === TokenType.LeftBracket)
+            brackets[1]++;
+        else if (i.type === TokenType.RightBracket) {
+            brackets[1]--;
+            if (!(brackets[0] || brackets[1] || brackets[2]))
+                if (includePrev)
+                    yield Array.from(accumulator);
+                else
+                    yield accumulator.splice(0, accumulator.length)
+        } else if (i.type === TokenType.LeftBrace)
+            brackets[2]++;
+        else if (i.type === TokenType.RightBrace) {
+            brackets[2]--;
+            if (!(brackets[0] || brackets[1] || brackets[2]))
+                if (includePrev)
+                    yield Array.from(accumulator);
+                else
+                    yield accumulator.splice(0, accumulator.length)
         }
-
-        // Only if there was a change, should we re-emit the last of the accumulator.
-        if (![TokenType.RightBrace, TokenType.RightBracket, TokenType.RightParenthesis].includes(tokens[tokens.length - 1].type))
-            yield accumulator;
     }
 
+    // Only if there was a change, should we re-emit the last of the accumulator.
+    if (![TokenType.RightBrace, TokenType.RightBracket, TokenType.RightParenthesis].includes(tokens[tokens.length - 1].type))
+        yield accumulator;
+}
+const split = (tokens: Token[], by: TokenType, keepDelimiter?: boolean): Token[][] => tokens.reduce((a: Token[][], i: Token) => i.type === by ? [...a, keepDelimiter ? [i] : []] : [...a.slice(0, -1), a[a.length - 1].concat(i)], [[]]);
+export type Fn = [returnType: Token<TokenType.TypeReference>, params: { [param: string]: [type: Token<TokenType.TypeReference>, name: Token<TokenType.Identifier>] }];
+
+export default function buildConstructors(): ConstructMap {
     const constructors: ConstructMap = {
         [ConstructType.List](_tok: Token[]): Construct<ConstructType.List> {
             const tokens = removeSpace(_tok);
             if (tokens[0].type === TokenType.LeftBracket && tokens[tokens.length - 1].type === TokenType.RightBracket)
                 return {
-                    body: matchExpressionList(tokens.slice(1, -1)).map(i => constructors[ConstructType.Expression](i)),
+                    body: matchExpressionList(tokens.slice(1, -1), constructors).map(i => constructors[ConstructType.Expression](i)),
                     constructType: ConstructType.List
                 };
             else
@@ -120,8 +122,6 @@ export default function buildConstructors(): ConstructMap {
         },
         [ConstructType.Dictionary](_tok: Token[]): Construct<ConstructType.Dictionary> {
             const tokens = removeSpace(_tok);
-            const grammar: [TokenType.LeftBrace, Repeat<[TokenType.Identifier, TokenType.Colon, ConstructType.Expression]>, TokenType.RightBrace] =
-                [TokenType.LeftBrace, new Repeat([TokenType.Identifier, TokenType.Colon, ConstructType.Expression]), TokenType.RightBrace];
 
             throw {
                 msg: `SyntaxError - Invalid Syntax - ${ConstructType[ConstructType.Dictionary]}`,
@@ -156,7 +156,7 @@ export default function buildConstructors(): ConstructMap {
                     }
 
                     return {
-                        body: matchExpressionList(params).map(i => constructors[ConstructType.Expression](i)),
+                        body: matchExpressionList(params, constructors).map(i => constructors[ConstructType.Expression](i)),
                         constructType: ConstructType.Call,
                         data: constructors[ConstructType.Value](identifier),
                     };
@@ -203,20 +203,52 @@ export default function buildConstructors(): ConstructMap {
                 data: constructors[ConstructType.Value](identifier)
             };
         },
-        [ConstructType.Function](_tok: Token[]): Construct<ConstructType.Function, Token<TokenType.Identifier>[]> {
+        [ConstructType.Function](_tok: Token[]): Construct<ConstructType.Function, Fn> {
             // TODO: Add some sort of `do` expression, where passing a list of functions will generate a new function, calling all its children in sequence
             const tokens = removeSpace(_tok);
 
-            const params: Token<TokenType.Identifier>[] = [];
+            const params: { [param: string]: [type: Token<TokenType.TypeReference>, name: Token<TokenType.Identifier>] } = {};
 
             const trigger = tokens.findIndex(i => i.type === TokenType.Lambda);
-            if (trigger >= 0) {
+
+            const preTrigger = tokens.slice(0, trigger);
+            let returnType: Token<TokenType.TypeReference> = null;
+
+            if (preTrigger[preTrigger.length - 1].type === TokenType.RightParenthesis) {
+                const preParens = preTrigger.slice(0, preTrigger.findIndex(i => i.type === TokenType.LeftParenthesis))
+
+                if (preParens[0].type === TokenType.TypeReference)
+                    returnType = preParens[0] as typeof returnType;
+                else
+                    throw {
+                        msg: `SyntaxError - Functions must specify their return type - ${ConstructType[ConstructType.Function]}`,
+                        matcher: ConstructType.Function,
+                        tokens
+                    }
+            } else {
+                if (preTrigger[0].type !== TokenType.TypeReference || (preTrigger[1] && preTrigger[1].type !== TokenType.TypeReference))
+                    throw {
+                        msg: `SyntaxError - Functions must specify their return type - ${ConstructType[ConstructType.Function]}`,
+                        matcher: ConstructType.Function,
+                        tokens
+                    }
+                returnType = preTrigger[0] as typeof returnType;
+            }
+
+            if (trigger > 0) {
                 const paramList = tokens.slice(0, trigger);
-                const isNamed = paramList.some(i => i.type === TokenType.LeftParenthesis) && paramList[0].type === TokenType.Identifier;
+                const isNamed = paramList.some(i => i.type === TokenType.LeftParenthesis) && paramList[1].type === TokenType.Identifier;
+
+                const parse = function (input: typeof paramList) {
+                    const rpt = new Repeat([TokenType.TypeReference, TokenType.Identifier]).action(input);
+
+                    for (const i of rpt)
+                        params[i[1].source] = [i[0] as Token<TokenType.TypeReference>, i[1] as Token<TokenType.Identifier>];
+                }
 
                 if (isNamed) {
-                    if (paramList[1].type === TokenType.LeftParenthesis && paramList[paramList.length - 1].type === TokenType.RightParenthesis)
-                        params.push(...new Repeat([TokenType.Identifier]).action(paramList.slice(2, -1)).map(i => i[0] as Token<TokenType.Identifier>));
+                    if (paramList[2].type === TokenType.LeftParenthesis && paramList[paramList.length - 1].type === TokenType.RightParenthesis)
+                        parse(paramList.slice(3, -1));
                     else
                         throw {
                             msg: `SyntaxError - Named Functions must be parenthesised - ${ConstructType[ConstructType.Function]}`,
@@ -224,10 +256,10 @@ export default function buildConstructors(): ConstructMap {
                             tokens
                         }
                 } else {
-                    if (paramList[0].type === TokenType.LeftParenthesis && paramList[paramList.length - 1].type === TokenType.RightParenthesis)
-                        params.push(...new Repeat([TokenType.Identifier]).action(paramList.slice(1, -1)).map(i => i[0] as Token<TokenType.Identifier>))
+                    if (paramList[1].type === TokenType.LeftParenthesis && paramList[paramList.length - 1].type === TokenType.RightParenthesis)
+                        parse(paramList.slice(2, -1));
                     else
-                        params.push(...new Repeat([TokenType.Identifier]).action(paramList).map(i => i[0] as Token<TokenType.Identifier>));
+                        parse(paramList.slice(1));
                 }
             } else
                 throw {
@@ -241,7 +273,7 @@ export default function buildConstructors(): ConstructMap {
             return {
                 body: [expr],
                 constructType: ConstructType.Function,
-                data: params
+                data: [returnType, params]
             }
 
         },
@@ -257,7 +289,7 @@ export default function buildConstructors(): ConstructMap {
                 constructType: ConstructType.Expression
             };
         },
-        [ConstructType.Value](_tok: Token[]): Construct<ConstructType.Value> {
+        [ConstructType.Value](_tok: Token[]): Construct<ConstructType.Value, Value> {
             const tokens = removeSpace(_tok);
 
             if (!_tok || _tok.length <= 0)
@@ -267,19 +299,20 @@ export default function buildConstructors(): ConstructMap {
                     tokens
                 }
 
-            return {
-                body: Array.from(countParens(tokens)).map(tokens => {
-                    // TODO: Add Dictionaries and Lists
-                    const constructSelect = new Select([ConstructType.Call, ConstructType.PropertyAccessor, ConstructType.Function]).action(tokens);
+            const constructSelect = new Select([ConstructType.Call, ConstructType.PropertyAccessor, ConstructType.Function]);
 
-                    if (constructSelect)
-                        return constructors[constructSelect](tokens);
-                    else if (!tokens.find(i => i.type === TokenType.Dot))
-                        return [tokens[0]];
-                    else
-                        return tokens.reduce((a: Token[][], i: Token) => i.type === TokenType.Dot ? [...a, []] : [...a.slice(0, -1), a[a.length - 1].concat(i)], [[]]);
-                }),
-                constructType: ConstructType.Value
+            const segments = Array.from(countParens(tokens, false))
+                .map(i => [i, i.findIndex(i => i.type === TokenType.LeftParenthesis)] as const)
+                .map(i => i[1] > 0 ? [i[0].slice(0, i[1]), [i[0].slice(i[1])]] as const : [i[0], []] as const)
+                .map(i => [split(i[0], TokenType.SubReference, true), i[1]]).flat(2).filter(i => i.length > 0);
+
+            const merged = segments.reduce((acc: Token[][], i: Token[]) => i[0].type === TokenType.LeftParenthesis ? [...acc.slice(0, -1), [...acc[acc.length - 1], ...i]] : [...acc, i], [[]]);
+
+            let type: ConstructType | TokenType;
+            return {
+                body: [],
+                constructType: ConstructType.Value,
+                data: merged.map(i => typeof (type = constructSelect.action(i)) === 'number' ? constructors[type](i) : i).flat(1) as Value
             };
         },
         [ConstructType.Statement](_tok: Token[]): Construct<ConstructType.Statement> {

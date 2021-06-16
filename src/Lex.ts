@@ -1,3 +1,5 @@
+import {sourceMap} from "./util";
+
 export enum TokenType {
     Space,
     Newline,
@@ -8,10 +10,11 @@ export enum TokenType {
     Export,
     Module,
     Identifier,
+    TypeReference,
     Operator,
     Comment,
     Comma,
-    Dot,
+    SubReference,
     LeftParenthesis,
     RightParenthesis,
     LeftBracket,
@@ -21,6 +24,8 @@ export enum TokenType {
     Colon,
     Semicolon,
     Lambda,
+    Action,
+    Assign,
     // TODO: Add some sort of assignment operator that can be used for temporary assignment.
     // `getStyle(a = getCurrentPointer(), styleSheet[a + 1])`
     // This would allow for the reuse of certain variables, and allow for much simpler expressions.
@@ -146,7 +151,7 @@ export const operators: Record<Operator, operator> = {
         associativity: 'right',
         type: 'binary'
     }
-};
+} as const;
 
 export const matchers: Record<TokenType, (tok: string) => boolean> = {
     [TokenType.Operator]: tok => Object.values(operators).some(i => i.matcher(tok)),
@@ -154,16 +159,19 @@ export const matchers: Record<TokenType, (tok: string) => boolean> = {
     [TokenType.Boolean]: tok => tok === "true" || tok === "false",
     [TokenType.String]: tok => /^((?<![\\])['"])((?:.(?!(?<![\\])\1))*.?)\1$/.test(tok), // Thanks internet (https://www.metaltoad.com/blog/regex-quoted-string-escapable-quotes)
     [TokenType.Identifier]: tok => !reservedWords.includes(tok) && /^[a-zA-Z$_@][a-zA-Z0-9$_@]*$/.test(tok),
+    [TokenType.TypeReference]: tok => tok.startsWith('!') && matchers[TokenType.Identifier](tok.slice(1)),
+    [TokenType.SubReference]: tok => tok.startsWith('.') && matchers[TokenType.Identifier](tok.slice(1)),
     [TokenType.Space]: tok => /^[ \t]+$/.test(tok),
     [TokenType.Newline]: tok => /^\n+$/.test(tok),
-    [TokenType.Comment]: tok => /^#.*\n$/.test(tok),
+    [TokenType.Comment]: tok => /^#.*$/.test(tok),
 
     [TokenType.Lambda]: tok => tok === "=>",
+    [TokenType.Action]: tok => tok === "->",
+    [TokenType.Assign]: tok => tok === "<-",
     [TokenType.Import]: tok => tok === "import",
     [TokenType.Export]: tok => tok === "export",
     [TokenType.Module]: tok => tok === "module",
     [TokenType.Comma]: tok => tok === ',',
-    [TokenType.Dot]: tok => tok === '.',
     [TokenType.LeftParenthesis]: tok => tok === '(',
     [TokenType.RightParenthesis]: tok => tok === ')',
     [TokenType.LeftBracket]: tok => tok === '[',
@@ -185,14 +193,20 @@ export type Token<T extends TokenType = any> = {
 export const reservedWords: string[] = [
     'import',
     'export',
-    'return',
+    'module',
     'if',
-    'each',
-    'loop'
+    'else',
+    'do',
+    'match',
+    'unwrap',
+    'type',
+    'in',
+    'repeat',
 ];
 
 export default function Lex(input: string, resource: string = "<unknown>"): Token[] { // I love how simple this gets
     const tokens: Token[] = [];
+    sourceMap.set(resource, input);
 
     let source = Array.from(input.trim());
     let charIndex: number = 0;
@@ -222,7 +236,8 @@ export default function Lex(input: string, resource: string = "<unknown>"): Toke
             throw {
                 file: resource,
                 charIndex: charIndex,
-                msg: `SyntaxError: Token ${accumulator.join('')} wasn't recognised`
+                msg: `SyntaxError: Token ${accumulator.join('')} wasn't recognised`,
+                origin: tokens[tokens.length - 1]
             }
     }
 

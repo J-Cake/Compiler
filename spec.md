@@ -70,7 +70,7 @@ Functions are the basis of computation. Information is processed through table s
   > A named or unnamed construct which converts parameters to a set of values predictably
 
  ```
- hyp(a, b) => calc.sqrt(a ^ 2 + b ^ 2)
+ !int hyp(!int a, !int b) => calc.sqrt(a ^ 2 + b ^ 2)
  x => x + 1
  ``` 
 
@@ -86,7 +86,7 @@ module calc(sin, cos, tan)
   sum(a, b) => a + b
   
 calc.sin(3.14) # 0 
-calc.sum # ReferenceError: `sum` does not exist on `calc`
+calc.sum # ReferenceError: Reference to unknown symbol `sum` on `calc`
 ```
 
 * Do expressions
@@ -112,21 +112,20 @@ import 'str','io'
 ```
 ```
 
-* Is
+* Store
   > Makes a symbol visible outside a scope or for later use
 
 ```
 prettifyCode(x) => do
-  tokens is Lex(x),
-  tree is Parse(tokens),
-  trimmed is Repair(tree),
+  tokens <- Lex(x),
+  tree <- Parse(tokens),
+  trimmed <- Repair(tree),
   
   Assemble(trimmed)
   
 main(args) => do
-  status is writeFile(code export prettifyCode(args[0])),
-  io.println_out('Info: Beautified', code.tokens.length, 'tokens'),
-  0
+  status <- writeFile(code <- prettifyCode(args[0])),
+  io.println_out('Info: Beautified', code.tokens.length, 'tokens')
 ```
 
 * Matchers
@@ -180,4 +179,15 @@ printAll(users) => user in users ->
   
 ```
 unwrap [name: 'Ryan'] -> str.concat(name, '!')
+```
+
+* Type
+  > Declares a type alias
+  
+```
+type tree [
+  species: 'oak',
+  age: 89,
+  fruit: none
+]
 ```

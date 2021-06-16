@@ -1,0 +1,5 @@
+import 'calc', 'io'
+
+hyp(a, b) => calc.sqrt(a ** 2 + b ** 2)
+
+io.println_out('The hypotenuse of 3, 4 is', hyp(3, 4))

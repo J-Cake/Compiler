@@ -130,15 +130,6 @@ export class Repeat<Expr extends (TokenType | ConstructType)[], Separator extend
 
         return groups as [...Token[], Token<Separator>][];
     }
-
-    private matches(tokens: Token[], sep: Token): boolean {
-        return !this.rule.some(function (i, a) {
-            if (i in ConstructType)
-                return false;
-            else
-                return i === (tokens[a]?.type ?? sep.type);
-        });
-    }
 }
 
 export class Select<Expr extends (TokenType | ConstructType)[]> extends Matcher<Expr> {
@@ -169,6 +160,11 @@ export type Construct<T extends ConstructType, K = any> = {
     body: Token[] | Construct<any>[],
     data?: K
 };
+
+export type Value =
+    [Construct<ConstructType.Call | ConstructType.PropertyAccessor | ConstructType.Function> |
+        Token<TokenType.Identifier | TokenType.Integer | TokenType.String | TokenType.Boolean>, ...(Construct<ConstructType.Call | ConstructType.PropertyAccessor | ConstructType.Function> |
+        Token<TokenType.Identifier | TokenType.Integer | TokenType.String | TokenType.Boolean | TokenType.SubReference>)[]]
 
 const constructors = Constructors();
 
